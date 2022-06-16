@@ -16,7 +16,7 @@ select serource group and populate userId to grant this user access to secret va
 start deployment
 
 ### or use Azure cli
-set valid userId in the parameters json file
+set a valid userId in the parameters json file
 
 ```
 az deployment group create --resource-group <resourceGroupName> --template-file azure-deployment-template.json --parameters azure-deployment-parameters.json
@@ -24,6 +24,8 @@ az deployment group create --resource-group <resourceGroupName> --template-file 
 
 
 ## Console command to generate a report
+extract authorisation details (username and password) from Key vaults
+
 ```
 curl -v -u user:password https://<host-name>/api/report/2020-01-01/2022-06-06 --output report.xlsx
 ```
