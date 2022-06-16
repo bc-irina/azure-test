@@ -16,6 +16,7 @@ select serource group and populate userId to grant this user access to secret va
 start deployment
 
 ### or use Azure cli
+set valid userId in the parameters json file
 
 ```
 az deployment group create --resource-group <resourceGroupName> --template-file azure-deployment-template.json --parameters azure-deployment-parameters.json
