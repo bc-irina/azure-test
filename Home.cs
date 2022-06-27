@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using System.IO;
 
 namespace Company.Function
+
 {
     public static class Home
     {
