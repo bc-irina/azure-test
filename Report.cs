@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using System.IO;
+using System.Collections;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -13,11 +14,17 @@ using System.Net.Http.Headers;
 using Newtonsoft.Json.Linq;
 using Microsoft.Extensions.Configuration;
 using OfficeOpenXml;
+using System.Security.Cryptography;
+using Microsoft.Azure.Documents.Client;
+using Microsoft.Azure.Documents.Linq;
+
 namespace Company.Function
 {
     public enum ReportHeader
     {
         user_id,
+        user_name,
+        instance,
         service,
         response_code,
         response_text,
@@ -51,15 +58,18 @@ namespace Company.Function
     public static class Report
     {
         static HttpResponseMessage response;
+
         const string query = "SELECT * FROM c WHERE c.payment_date BETWEEN {from} AND CONCAT({to},' 23:59:60')";
         [FunctionName("Report")]
         public static async Task<HttpResponseMessage> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "report/{from}/{to}")] HttpRequestMessage req,
             [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString", SqlQuery = query)] IEnumerable<object> inputDocument,
+            [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
             string from,
             string to,
             ILogger log)
         {
+
             var authHeader = req.Headers.Authorization;
             if (authHeader != null && authHeader.ToString().StartsWith("Basic"))
             {
@@ -97,10 +107,56 @@ namespace Company.Function
                     {
                         var json = JsonConvert.SerializeObject(documentItem);
                         JToken responseBody = JToken.FromObject(documentItem);
+                        string uuid = responseBody["user_id"].ToString();
+
+                        Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "UserCollection");
+                        IDocumentQuery<dynamic> query = userDocument.CreateDocumentQuery(collectionUri,
+                        "SELECT * FROM c WHERE c.id='" + uuid + "'",
+                        new FeedOptions
+                        {
+                            PopulateQueryMetrics = true,
+                            MaxItemCount = -1,
+                            MaxDegreeOfParallelism = -1,
+                            EnableCrossPartitionQuery = true
+                        }
+
+                        ).AsDocumentQuery();
+                        //query if user already in db
+                        FeedResponse<dynamic> sqlResult = await query.ExecuteNextAsync();
+                        string username = null;
+                        string instanceName = null;
+                        if (sqlResult.Count == 0)
+                        {
+                            //call user api to get user_name and instance
+                            JToken userInfo = getUserInfo(uuid, log);
+                            if (userInfo != null)
+                            {
+                                username = userInfo["user_name"].ToString();
+                                instanceName = userInfo["instance"].ToString();
+
+                                await userDocument.CreateDocumentAsync(collectionUri, userInfo);
+
+                            }
+                        }
+                        else
+                        {
+                            //populate user_name and instance from sql query
+                            JToken jsonResult = JToken.FromObject(sqlResult);
+                            username = jsonResult[0]["user_name"].ToString();
+                            instanceName = jsonResult[0]["instance"].ToString();
+                        }
+
                         foreach (ReportHeader a in Enum.GetValues(typeof(ReportHeader)))
+
                         {
                             string cellValue = responseBody[a.ToString()] != null ? responseBody[a.ToString()].ToString().Replace("\n", "").Replace("\r", "") : null;
                             worksheet.Cells[row, (int)a + 1].Value = cellValue;
+
+                        }
+                        if (username != null & instanceName != null)
+                        {
+                            worksheet.Cells[row, (int)ReportHeader.user_name + 1].Value = username;
+                            worksheet.Cells[row, (int)ReportHeader.instance + 1].Value = instanceName;
                         }
                         row = row + 1;
                     }
@@ -123,6 +179,90 @@ namespace Company.Function
             {
                 return new HttpResponseMessage(HttpStatusCode.Unauthorized);
             }
+        }
+
+        private static string getSignature(string date, string accessSecret)
+        {
+            SortedList ParamsList = new SortedList{
+            { "timestamp", date }
+            };
+
+            string canonicalQuery = string.Empty;
+            foreach (DictionaryEntry keyValuePair in ParamsList)
+            {
+                canonicalQuery = canonicalQuery + keyValuePair.Key.ToString() + "="
+                + Uri.EscapeDataString(keyValuePair.Value.ToString()) + "&";
+            }
+            string finalQuery = canonicalQuery.Replace("+",
+            "%20").Remove(canonicalQuery.Length - 1, 1);
+            string payshieldSignature = hmacDigest(finalQuery, accessSecret);
+            return payshieldSignature;
+
+        }
+        private static string hmacDigest(string msg, string keyString)
+        {
+            byte[] keyByte = Encoding.ASCII.GetBytes(keyString);
+            byte[] messageBytes = Encoding.ASCII.GetBytes(msg);
+            HMACSHA256 hmacsha256 = new HMACSHA256(keyByte);
+            byte[] hashmessage = hmacsha256.ComputeHash(messageBytes);
+            return Convert.ToBase64String(hashmessage);
+        }
+
+        private static JToken getUserInfo(string uuid, ILogger log)
+        {
+            string accessKey;
+            string accessSecret;
+            string apiEndpoint;
+            try
+            {
+                accessKey = Environment.GetEnvironmentVariable("ACCESS_KEY");
+                accessSecret = Environment.GetEnvironmentVariable("ACCESS_SECRET");
+                apiEndpoint = Environment.GetEnvironmentVariable("USER_API_ENDPOINT");
+                if (accessKey == null || accessSecret == null || apiEndpoint == null)
+                {
+                    log.LogWarning("API Secrets not found");
+                    return null;
+                }
+
+            }
+            catch (Exception e)
+            {
+                log.LogError(e.Message);
+                return null;
+            }
+
+            var httpClient = new HttpClient();
+            var settings = new JsonSerializerSettings
+            {
+                DateFormatString =
+                    "yyyy-MM-ddTHH:mm:ss.fffZ"
+            };
+            var d = JsonConvert.SerializeObject(DateTime.UtcNow, settings);
+            var date = d.Replace("\"", "");
+            string signature = getSignature(date, accessSecret);
+
+            httpClient.DefaultRequestHeaders.Add("Payshield-Signature", signature);
+            httpClient.DefaultRequestHeaders.Add("Payshield-Key", accessKey);
+            httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            var url = apiEndpoint + "payline/users/" + uuid;
+            var builder = new UriBuilder(url);
+            builder.Port = -1;
+            var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
+            query["timestamp"] = date;
+
+            builder.Query = query.ToString();
+            string finalUrl = builder.ToString();
+            var response = httpClient.GetAsync(finalUrl).Result;
+
+            if (response.IsSuccessStatusCode)
+            {
+                var dataObjects = response.Content.ReadAsAsync<object>().Result;
+                JToken jsonResponse = JToken.FromObject(dataObjects);
+
+                return jsonResponse;
+            }
+            return null;
         }
     }
 }
