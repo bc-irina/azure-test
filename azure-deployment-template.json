@@ -63,18 +63,6 @@
         "role_name": {
             "defaultValue": "[newGuid()]",
             "type": "String"
-        },
-        "apiAccessKey": {
-            "defaultValue":"",
-            "type": "String"
-        },
-        "apiAccessSecret": {
-            "defaultValue": "",
-            "type": "String"
-        },
-        "apiEndpoint": {
-            "defaultValue": "",
-            "type": "String"
         }
     },
     "variables": {
@@ -153,16 +141,6 @@
                         {
                             "name": "CosmosDbConnectionString",
                             "value": "[concat('AccountEndpoint=https://',parameters('databaseAccounts_webhooks_db_name'),'.documents.azure.com:443/;AccountKey=', listKeys(parameters('databaseAccounts_webhooks_db_name'),'2022-02-15-preview').primaryMasterKey)]"
-                        },
-                        {
-                            "name": "ACCESS_KEY",
-                            "value": "[parameters('apiAccessKey')]"
-                        },{
-                            "name": "ACCESS_SECRET",
-                            "value": "[parameters('apiAccessSecret')]"
-                        },{
-                            "name": "USER_API_ENDPOINT",
-                            "value": "[parameters('apiEndpoint')]"
                         },
                         {
                             "name": "WebHookAuth",
@@ -428,45 +406,6 @@
             "properties": {
                 "resource": {
                     "id": "WebhookCollection",
-                    "indexingPolicy": {
-                        "indexingMode": "consistent",
-                        "automatic": true,
-                        "includedPaths": [
-                            {
-                                "path": "/*"
-                            }
-                        ],
-                        "excludedPaths": [
-                            {
-                                "path": "/\"_etag\"/?"
-                            }
-                        ]
-                    },
-                    "partitionKey": {
-                        "paths": [
-                            "/_partitionKey"
-                        ],
-                        "kind": "Hash",
-                        "version": 2
-                    },
-                    "conflictResolutionPolicy": {
-                        "mode": "LastWriterWins",
-                        "conflictResolutionPath": "/_ts"
-                    }
-                }
-            }
-        },
-        {
-            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
-            "apiVersion": "2021-11-15-preview",
-            "name": "[concat(parameters('databaseAccounts_webhooks_db_name'), '/outDatabase/UserCollection')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('databaseAccounts_webhooks_db_name'), 'outDatabase')]",
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('databaseAccounts_webhooks_db_name'))]"
-            ],
-            "properties": {
-                "resource": {
-                    "id": "UserCollection",
                     "indexingPolicy": {
                         "indexingMode": "consistent",
                         "automatic": true,
