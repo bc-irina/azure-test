@@ -10,15 +10,6 @@
         },
         "databaseAccounts_webhooks_db_name": {
             "value": "webhook-db"
-        },
-        "apiAccessKey": {
-            "value": "enter-valid-apiAccessKey"
-        },
-        "apiAccessSecret": {
-            "value": "enter-valid-apiAccessSecret"
-        },
-        "apiEndpoint": {
-            "value": "enter-valid-apiEndpoint"
         }
     }
 }
