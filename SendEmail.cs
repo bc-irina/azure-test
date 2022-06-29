@@ -70,7 +70,9 @@ namespace Company.Function
 
 
             log.LogInformation($"SendEmailTimer executed at: {DateTime.Now}");
+
             DateTime nowDate = DateTime.Now;
+
 
             DateTime fromDate = nowDate.AddHours(-24);
 
@@ -92,7 +94,9 @@ namespace Company.Function
             var msg = new SendGridMessage()
             {
                 From = new EmailAddress(Environment.GetEnvironmentVariable("SenderEmail")),
+
                 Subject = "Transactions Report from " + fromDate.ToString("yyyy-MM-dd_HH:mm") + " to " + nowDate.ToString("yyyy-MM-dd_HH:mm"),
+
                 PlainTextContent = "and easy to do anywhere, especially with C#",
                 HtmlContent = "and easy to do anywhere, <strong>especially with C#</strong>"
             };
