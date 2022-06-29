@@ -1,5 +1,5 @@
 using System;
-
+using System.Threading.Tasks;
 using System.IO;
 using System.Collections.Generic;
 using Microsoft.Azure.WebJobs;
@@ -9,11 +9,14 @@ using SendGrid.Helpers.Mail;
 using OfficeOpenXml;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Microsoft.Azure.Documents.Client;
+using Microsoft.Azure.Documents.Linq;
 namespace Company.Function
+
 {
-    public class SendEmail
+    public static class SendEmail
     {
-        public byte[] excelAttachment(IEnumerable<object> inputDocument)
+        public static byte[] excelAttachment(IEnumerable<object> inputDocument)
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             MemoryStream memorystream = new MemoryStream();
@@ -52,37 +55,55 @@ namespace Company.Function
         }
 
 
-    
-        const string query = "SELECT * FROM c WHERE c.payment_date BETWEEN DateTimeAdd(\"hh\", -24, GetCurrentDateTime())  AND GetCurrentDateTime()";
-      
+
+
+        // const string query = "SELECT * FROM c WHERE c.payment_date BETWEEN DateTimeAdd(\"hh\", -48, GetCurrentDateTime())  AND GetCurrentDateTime()";
+
         [FunctionName("SendEmailTimer")]
         [return: SendGrid(ApiKey = "SendGridApiKey")]
-        public SendGridMessage Run([TimerTrigger("*/15 * * * * *")] TimerInfo myTimer,
-        [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString", SqlQuery = query)] IEnumerable<object> inputDocument,
-        
+        public static async Task<SendGridMessage> Run([TimerTrigger("%MessageQueuerOccurence%")] TimerInfo myTimer,
+        [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient webhookDocument,
+        // IEnumerable<object> inputDocument,
+        [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
         ILogger log)
         {
 
-           
+
             log.LogInformation($"SendEmailTimer executed at: {DateTime.Now}");
+            DateTime nowDate = DateTime.UtcNow;
+
+            DateTime fromDate = nowDate.AddHours(-24);
+
+            Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
+            string q = "SELECT * FROM c WHERE c.payment_date BETWEEN '" + fromDate.ToString("yyyy-MM-dd HH:mm:ssfffffff") + "'  AND '" + nowDate.ToString("yyyy-MM-dd HH:mm:ssfffffff") + "'";
+
+            IDocumentQuery<dynamic> query = userDocument.CreateDocumentQuery(collectionUri, q,
+                            new FeedOptions
+                            {
+                                PopulateQueryMetrics = true,
+                                MaxItemCount = -1,
+                                MaxDegreeOfParallelism = -1,
+                                EnableCrossPartitionQuery = true
+                            }
+
+                            ).AsDocumentQuery();
+            FeedResponse<dynamic> sqlResult = await query.ExecuteNextAsync();
 
             var msg = new SendGridMessage()
             {
-                From = new EmailAddress("irina.burdilo@sequenceshift.com", "IB"),
-                Subject = "Sending emails with Twilio SendGrid is Fun",
+                From = new EmailAddress(Environment.GetEnvironmentVariable("SenderEmail")),
+                Subject = "Transactions Report from " + fromDate.ToString("yyyy-MM-dd_HH:mm:ss") + " to " + nowDate.ToString("yyyy-MM-dd_HH:mm:ss"),
                 PlainTextContent = "and easy to do anywhere, especially with C#",
                 HtmlContent = "and easy to do anywhere, <strong>especially with C#</strong>"
             };
 
-            msg.AddTo(new EmailAddress("ira.burdilo@gmail.com", "Iriss"));
+            msg.AddTo(new EmailAddress(Environment.GetEnvironmentVariable("RecipientEmail")));
 
 
             SendGrid.Helpers.Mail.Attachment att = new SendGrid.Helpers.Mail.Attachment
             {
-
-
-                Content = Convert.ToBase64String(excelAttachment(inputDocument)),
-                Filename = "Report-from.xlsx",
+                Content = Convert.ToBase64String(ReportHelper.CallGenerateExcelReport(sqlResult, userDocument, log)),
+                Filename = "Report-from-" + fromDate.ToString("yyyy-MM-dd_HH:mm:ss") + "-to-" + nowDate.ToString("yyyy-MM-dd_HH:mm:ss") + ".xlsx",
                 Type = "application/vnd.openxmlformats-officedocument.spreadsheet.excel",
                 Disposition = "attachment"
 

@@ -1,4 +1,3 @@
-
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Http;
@@ -15,7 +14,7 @@ namespace Company.Function
     {
         [FunctionName("Home")]
         public static async Task<HttpResponseMessage> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "home")] HttpRequest req,ExecutionContext context,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "home")] HttpRequest req, ExecutionContext context,
             ILogger log)
         {
             var path = $"{context.FunctionAppDirectory}/report.html";
