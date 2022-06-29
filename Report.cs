@@ -115,7 +115,7 @@ namespace Company.Function
                             service = responseBody["service"].ToString();
 
                         }
-                        catch
+                        catch 
                         {
                             service = "payline";
                         }
@@ -174,7 +174,7 @@ namespace Company.Function
                         {
                             worksheet.Cells[row, (int)ReportHeader.user_name + 1].Value = username;
                             worksheet.Cells[row, (int)ReportHeader.instance + 1].Value = instanceName;
-
+                            
                         }
                         worksheet.Cells[row, (int)ReportHeader.service + 1].Value = service;
                         row = row + 1;
