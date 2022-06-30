@@ -54,6 +54,7 @@ namespace Company.Function
             return memorystream.ToArray();
         }
 
+
         [FunctionName("SendEmailTimer")]
         [return: SendGrid(ApiKey = "SendGridApiKey")]
         public static async Task<SendGridMessage> Run([TimerTrigger("%MessageQueuerOccurence%")] TimerInfo myTimer,
@@ -71,6 +72,7 @@ namespace Company.Function
             Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
             string q = "SELECT * FROM c WHERE c.payment_date_utc BETWEEN '" + fromDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'  AND '" + nowDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'";
 
+
             IDocumentQuery<dynamic> query = userDocument.CreateDocumentQuery(collectionUri, q,
                             new FeedOptions
                             {
@@ -86,8 +88,10 @@ namespace Company.Function
             var msg = new SendGridMessage()
             {
                 From = new EmailAddress(Environment.GetEnvironmentVariable("SenderEmail")),
+
                 Subject = "Transactions Report from " + fromDate.ToString("yyyy-MM-dd_HH:mm") + " to " + nowDate.ToString("yyyy-MM-dd_HH:mm"),
                 PlainTextContent = "Report-from-" + fromDate.ToString("yyyy-MM-dd_HH:mm:ss") + "-to-" + nowDate.ToString("yyyy-MM-dd_HH:mm:ss")
+
 
             };
 

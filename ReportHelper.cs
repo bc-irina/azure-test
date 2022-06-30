@@ -265,6 +265,7 @@ namespace Company.Function
             return null;
         }
 
+
         public static DateTime convertDateToUTC(string payment_date)
         {
             payment_date = payment_date.Substring(0, payment_date.LastIndexOf(' '));
@@ -275,5 +276,6 @@ namespace Company.Function
             return convertedDate;
 
         }
+
     }
 }
