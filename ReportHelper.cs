@@ -264,5 +264,16 @@ namespace Company.Function
             }
             return null;
         }
+
+        public static DateTime convertDateToUTC(string payment_date)
+        {
+            payment_date = payment_date.Substring(0, payment_date.LastIndexOf(' '));
+            payment_date = payment_date.Insert(payment_date.Length - 2, ":");
+
+            DateTime convertedDate = DateTime.Parse(payment_date).ToUniversalTime();
+            //string convertedString = convertDate(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
+            return convertedDate;
+
+        }
     }
 }
