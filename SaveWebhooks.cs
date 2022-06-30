@@ -7,6 +7,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json.Linq;
 namespace Company.Function
 {
     public static class SaveWebhook
@@ -41,7 +42,15 @@ namespace Company.Function
                 }
 
                 string requestBody = new StreamReader(webhookReq.Body).ReadToEnd();
+
                 outputDocument = requestBody;
+                JToken jsonResult = JToken.FromObject(requestBody);
+                JObject json = JObject.Parse(requestBody);
+                var payment_date = json["payment_date"].ToString();
+
+                string convertedDate = ReportHelper.convertDateToUTC(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
+                json.Add("payment_date_utc", convertedDate);
+                outputDocument = json;
                 return (ActionResult)new OkObjectResult(requestBody);
             }
             else

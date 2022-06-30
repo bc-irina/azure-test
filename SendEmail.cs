@@ -55,29 +55,23 @@ namespace Company.Function
         }
 
 
-
-
-        // const string query = "SELECT * FROM c WHERE c.payment_date BETWEEN DateTimeAdd(\"hh\", -48, GetCurrentDateTime())  AND GetCurrentDateTime()";
-
         [FunctionName("SendEmailTimer")]
         [return: SendGrid(ApiKey = "SendGridApiKey")]
         public static async Task<SendGridMessage> Run([TimerTrigger("%MessageQueuerOccurence%")] TimerInfo myTimer,
-        [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient webhookDocument,
-        // IEnumerable<object> inputDocument,
-        [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
-        ILogger log)
+         [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient webhookDocument,
+
+         [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
+         ILogger log)
         {
 
-
             log.LogInformation($"SendEmailTimer executed at: {DateTime.Now}");
-
             DateTime nowDate = DateTime.Now;
-
 
             DateTime fromDate = nowDate.AddHours(-24);
 
             Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
-            string q = "SELECT * FROM c WHERE c.payment_date BETWEEN '" + fromDate.ToString("yyyy-MM-dd HH:mm:ssfffffff") + "'  AND '" + nowDate.ToString("yyyy-MM-dd HH:mm:ssfffffff") + "'";
+            string q = "SELECT * FROM c WHERE c.payment_date_utc BETWEEN '" + fromDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'  AND '" + nowDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'";
+
 
             IDocumentQuery<dynamic> query = userDocument.CreateDocumentQuery(collectionUri, q,
                             new FeedOptions
@@ -96,9 +90,9 @@ namespace Company.Function
                 From = new EmailAddress(Environment.GetEnvironmentVariable("SenderEmail")),
 
                 Subject = "Transactions Report from " + fromDate.ToString("yyyy-MM-dd_HH:mm") + " to " + nowDate.ToString("yyyy-MM-dd_HH:mm"),
+                PlainTextContent = "Report-from-" + fromDate.ToString("yyyy-MM-dd_HH:mm:ss") + "-to-" + nowDate.ToString("yyyy-MM-dd_HH:mm:ss")
 
-                PlainTextContent = "and easy to do anywhere, especially with C#",
-                HtmlContent = "and easy to do anywhere, <strong>especially with C#</strong>"
+
             };
 
             msg.AddTo(new EmailAddress(Environment.GetEnvironmentVariable("RecipientEmail")));
