@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Collections.Generic;
 using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
 using SendGrid.Helpers.Mail;
 using OfficeOpenXml;
@@ -57,15 +56,13 @@ namespace Company.Function
         [FunctionName("SendEmailTimer")]
         [return: SendGrid(ApiKey = "SendGridApiKey")]
         public static async Task<SendGridMessage> Run([TimerTrigger("%MessageQueuerOccurence%")] TimerInfo myTimer,
-         [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient webhookDocument,
-
-         [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
-         ILogger log)
+          [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient webhookDocument,
+          [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
+          ILogger log)
         {
 
             log.LogInformation($"SendEmailTimer executed at: {DateTime.Now}");
             DateTime nowDate = DateTime.Now;
-
             DateTime fromDate = nowDate.AddHours(-24);
 
             Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
@@ -91,8 +88,12 @@ namespace Company.Function
 
             };
 
-            msg.AddTo(new EmailAddress(Environment.GetEnvironmentVariable("RecipientEmail")));
-
+            List<EmailAddress> emailList = new List<EmailAddress>();
+            foreach (var email in Environment.GetEnvironmentVariable("RecipientEmail").Split(","))
+            {
+                emailList.Add(new EmailAddress(email.Trim()));
+            }
+            msg.AddTos(emailList);
 
             SendGrid.Helpers.Mail.Attachment att = new SendGrid.Helpers.Mail.Attachment
             {
