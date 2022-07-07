@@ -1,6 +1,5 @@
 using System;
 using System.Text;
-using System.IO;
 using System.Collections;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
@@ -13,10 +12,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using Newtonsoft.Json.Linq;
 using Microsoft.Extensions.Configuration;
-using OfficeOpenXml;
 using System.Security.Cryptography;
 using Microsoft.Azure.Documents.Client;
-using Microsoft.Azure.Documents.Linq;
 
 namespace Company.Function
 {
@@ -59,11 +56,11 @@ namespace Company.Function
     {
         static HttpResponseMessage response;
 
-        const string query = "SELECT * FROM c WHERE c.payment_date BETWEEN {from} AND CONCAT({to},' 23:59:60')";
+        const string query = "SELECT * FROM c WHERE c.payment_date_utc BETWEEN {from} AND CONCAT({to},' 23:59:60')";
         [FunctionName("Report")]
         public static async Task<HttpResponseMessage> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "report/{from}/{to}")] HttpRequestMessage req,
-            [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString", SqlQuery = query)] IEnumerable<object> inputDocument,
+            [CosmosDB("outDatabase", "WebhookCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient inputDocument,
             [CosmosDB("outDatabase", "UserCollection", ConnectionStringSetting = "CosmosDbConnectionString")] DocumentClient userDocument,
             string from,
             string to,
@@ -86,112 +83,27 @@ namespace Company.Function
                 {
                     return new HttpResponseMessage(HttpStatusCode.Unauthorized);
                 }
-                ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-                using (ExcelPackage excel = new ExcelPackage())
+
+
+                //update empty utc
+                ReportHelper.updatePaymentUTC(inputDocument, log);
+
+                response = new HttpResponseMessage(HttpStatusCode.OK);
+                //Set the Excel document content response
+
+
+                DateTime fromDate = DateTime.Parse(from).ToUniversalTime();
+                DateTime toDate = DateTime.Parse(to + " 23:59:59").ToUniversalTime();
+                IEnumerable<object> sqlResult = await ReportHelper.queryDB(inputDocument, fromDate, toDate, log);
+                response.Content = new ByteArrayContent(ReportHelper.CallGenerateExcelReport(sqlResult, userDocument, log));
+                //Set the contentDisposition as attachment
+                response.Content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment")
                 {
-                    MemoryStream memorystream = new MemoryStream();
-                    var worksheet = excel.Workbook.Worksheets.Add("Report1");
+                    FileName = "Report-from-" + from + "-to-" + to + ".xlsx"
+                };
+                //Set the content type as xlsx format mime type
+                response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheet.excel");
 
-                    // build exel header
-                    var headerRow = new List<string[]>();
-                    var arr = Enum.GetNames(typeof(ReportHeader));
-                    headerRow.Add(arr);
-                    String upRange = (headerRow[0].Length + 64) > 90 ? "A" + Char.ConvertFromUtf32(headerRow[0].Length + 38) : Char.ConvertFromUtf32(headerRow[0].Length + 64);
-                    string headerRange = "A1:" + upRange + "1";
-                    worksheet.Cells[headerRange].LoadFromArrays(headerRow);
-
-                    // build report content
-                    int row = 2;
-                    int numCol = worksheet.Dimension.Columns;
-                    foreach (var documentItem in inputDocument)
-                    {
-                        var json = JsonConvert.SerializeObject(documentItem);
-                        JToken responseBody = JToken.FromObject(documentItem);
-                        string username = null;
-                        string instanceName = null;
-                        string service = null;
-                        try
-                        {
-                            service = responseBody["service"].ToString();
-
-                        }
-                        catch
-                        {
-                            service = "payline";
-                        }
-
-                        if (service == null || service == "payline")
-                        {
-                            string uuid = responseBody["user_id"].ToString();
-
-                            Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "UserCollection");
-                            IDocumentQuery<dynamic> query = userDocument.CreateDocumentQuery(collectionUri,
-                            "SELECT * FROM c WHERE c.id='" + uuid + "'",
-                            new FeedOptions
-                            {
-                                PopulateQueryMetrics = true,
-                                MaxItemCount = -1,
-                                MaxDegreeOfParallelism = -1,
-                                EnableCrossPartitionQuery = true
-                            }
-
-                            ).AsDocumentQuery();
-                            //query if user already in db
-                            FeedResponse<dynamic> sqlResult = await query.ExecuteNextAsync();
-
-                            if (sqlResult.Count == 0)
-                            {
-                                //call user api to get user_name and instance
-                                JToken userInfo = getUserInfo(uuid, log);
-                                if (userInfo != null)
-                                {
-                                    username = userInfo["user_name"].ToString();
-                                    instanceName = userInfo["instance"].ToString();
-
-                                    await userDocument.CreateDocumentAsync(collectionUri, userInfo);
-
-                                }
-                            }
-                            else
-                            {
-                                //populate user_name and instance from sql query
-                                JToken jsonResult = JToken.FromObject(sqlResult);
-                                username = jsonResult[0]["user_name"].ToString();
-                                instanceName = jsonResult[0]["instance"].ToString();
-                            }
-
-
-                        }
-
-                        foreach (ReportHeader a in Enum.GetValues(typeof(ReportHeader)))
-
-                        {
-                            string cellValue = responseBody[a.ToString()] != null ? responseBody[a.ToString()].ToString().Replace("\n", "").Replace("\r", "") : null;
-                            worksheet.Cells[row, (int)a + 1].Value = cellValue;
-
-                        }
-                        if (username != null & instanceName != null)
-                        {
-                            worksheet.Cells[row, (int)ReportHeader.user_name + 1].Value = username;
-                            worksheet.Cells[row, (int)ReportHeader.instance + 1].Value = instanceName;
-
-                        }
-                        worksheet.Cells[row, (int)ReportHeader.service + 1].Value = service;
-                        row = row + 1;
-                    }
-
-                    excel.SaveAs(memorystream);
-                    response = new HttpResponseMessage(HttpStatusCode.OK);
-                    //Set the Excel document content response
-                    response.Content = new ByteArrayContent(memorystream.ToArray());
-                    //Set the contentDisposition as attachment
-                    response.Content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment")
-                    {
-                        FileName = "Report-from-" + from + "-to-" + to + ".xlsx"
-                    };
-                    //Set the content type as xlsx format mime type
-                    response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheet.excel");
-                }
                 return response;
             }
             else

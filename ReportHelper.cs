@@ -1,29 +1,18 @@
 using System;
-
 using System.IO;
 using System.Collections.Generic;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
-using SendGrid.Helpers.Mail;
 using OfficeOpenXml;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-
 using System.Text;
-
 using System.Collections;
 using System.Threading.Tasks;
-
-using Microsoft.Azure.WebJobs.Extensions.Http;
-
 using System.Net.Http;
-using System.Net;
 using System.Net.Http.Headers;
-
-using Microsoft.Extensions.Configuration;
-
 using System.Security.Cryptography;
+using Microsoft.Azure.Documents;
+
 using Microsoft.Azure.Documents.Client;
 using Microsoft.Azure.Documents.Linq;
 namespace Company.Function
@@ -181,6 +170,78 @@ namespace Company.Function
 
         }
 
+
+
+        public static async Task<IEnumerable<object>> queryDB(DocumentClient webhookDocument, DateTime fromDate, DateTime toDate, ILogger log)
+        {
+            log.LogInformation($"SendEmailTimer executed at: {DateTime.Now}");
+
+            Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
+            string q = "SELECT * FROM c WHERE c.payment_date_utc BETWEEN '" + fromDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'  AND '" + toDate.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "'";
+
+            IDocumentQuery<dynamic> query = webhookDocument.CreateDocumentQuery(collectionUri, q,
+                            new FeedOptions
+                            {
+                                PopulateQueryMetrics = true,
+                                MaxItemCount = -1,
+                                MaxDegreeOfParallelism = -1,
+                                EnableCrossPartitionQuery = true
+                            }
+
+                            ).AsDocumentQuery();
+            FeedResponse<dynamic> sqlResult = await query.ExecuteNextAsync();
+            return sqlResult;
+        }
+
+        public static async void updatePaymentUTC(DocumentClient webhookDocument, ILogger log)
+        {
+            try
+            {
+                Uri collectionUri = UriFactory.CreateDocumentCollectionUri("outDatabase", "WebhookCollection");
+                string q = "SELECT * FROM c where  NOT IS_DEFINED( c.payment_date_utc)";
+
+                IDocumentQuery<dynamic> query = webhookDocument.CreateDocumentQuery(collectionUri, q,
+                                new FeedOptions
+                                {
+                                    PopulateQueryMetrics = true,
+                                    MaxItemCount = -1,
+                                    MaxDegreeOfParallelism = -1,
+                                    EnableCrossPartitionQuery = true
+                                }
+
+                                ).AsDocumentQuery();
+                FeedResponse<dynamic> sqlResult = await query.ExecuteNextAsync();
+                if (sqlResult.Count > 0)
+                {
+                    var concurrentTasks = new List<Task>();
+                    foreach (var item in sqlResult)
+                    {
+                        // concurrentTasks.Add(webhookDocument.UpsertDocumentAsync(item, new{payment_date_utc="dd"}));
+                        //item.("payment_date_utc", "jj");
+
+                        Document doc = item;
+                        JToken jsonItem = JToken.FromObject(item);
+
+                        var payment_date = jsonItem["payment_date"].ToString();
+
+                        string convertedDate = ReportHelper.convertDateToUTC(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
+
+                        doc.SetPropertyValue("payment_date_utc", convertedDate);
+                        await webhookDocument.ReplaceDocumentAsync(doc);
+
+                    }
+
+                }
+
+
+            }
+            catch (Exception e)
+            {
+                log.LogInformation(e.Message);
+            }
+
+        }
+
         private static string getSignature(string date, string accessSecret)
         {
             SortedList ParamsList = new SortedList{
@@ -272,7 +333,6 @@ namespace Company.Function
             payment_date = payment_date.Insert(payment_date.Length - 2, ":");
 
             DateTime convertedDate = DateTime.Parse(payment_date).ToUniversalTime();
-            //string convertedString = convertDate(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
             return convertedDate;
 
         }

@@ -44,13 +44,24 @@ namespace Company.Function
                 string requestBody = new StreamReader(webhookReq.Body).ReadToEnd();
 
                 outputDocument = requestBody;
-                JToken jsonResult = JToken.FromObject(requestBody);
-                JObject json = JObject.Parse(requestBody);
-                var payment_date = json["payment_date"].ToString();
 
-                string convertedDate = ReportHelper.convertDateToUTC(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
-                json.Add("payment_date_utc", convertedDate);
-                outputDocument = json;
+                try
+                {
+                    JToken jsonResult = JToken.FromObject(requestBody);
+                    JObject json = JObject.Parse(requestBody);
+                    var payment_date = json["payment_date"].ToString();
+
+                    string convertedDate = ReportHelper.convertDateToUTC(payment_date).ToString("yyyy-MM-dd HH:mm:ss");
+                    json.Add("payment_date_utc", convertedDate);
+                    outputDocument = json;
+                }
+                catch (Exception e)
+                {
+                    log.LogInformation(e.Message);
+                    outputDocument = requestBody;
+                }
+
+
                 return (ActionResult)new OkObjectResult(requestBody);
             }
             else
