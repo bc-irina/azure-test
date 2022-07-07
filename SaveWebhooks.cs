@@ -44,6 +44,7 @@ namespace Company.Function
                 string requestBody = new StreamReader(webhookReq.Body).ReadToEnd();
 
                 outputDocument = requestBody;
+
                 try
                 {
                     JToken jsonResult = JToken.FromObject(requestBody);
@@ -59,6 +60,7 @@ namespace Company.Function
                     log.LogInformation(e.Message);
                     outputDocument = requestBody;
                 }
+
 
                 return (ActionResult)new OkObjectResult(requestBody);
             }

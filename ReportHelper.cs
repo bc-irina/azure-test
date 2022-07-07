@@ -12,6 +12,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using Microsoft.Azure.Documents;
+
 using Microsoft.Azure.Documents.Client;
 using Microsoft.Azure.Documents.Linq;
 namespace Company.Function
@@ -58,6 +59,7 @@ namespace Company.Function
             }
             return memorystream.ToArray();
         }
+
 
         public static byte[] CallGenerateExcelReport(IEnumerable<object> inputDocument, DocumentClient userDocument, ILogger log)
         {
@@ -146,6 +148,7 @@ namespace Company.Function
                     }
 
                     foreach (ReportHeader a in Enum.GetValues(typeof(ReportHeader)))
+
                     {
                         string cellValue = responseBody[a.ToString()] != null ? responseBody[a.ToString()].ToString().Replace("\n", "").Replace("\r", "") : null;
                         worksheet.Cells[row, (int)a + 1].Value = cellValue;
@@ -166,6 +169,7 @@ namespace Company.Function
             return memorystream.ToArray();
 
         }
+
 
 
         public static async Task<IEnumerable<object>> queryDB(DocumentClient webhookDocument, DateTime fromDate, DateTime toDate, ILogger log)
@@ -237,6 +241,7 @@ namespace Company.Function
             }
 
         }
+
         private static string getSignature(string date, string accessSecret)
         {
             SortedList ParamsList = new SortedList{
@@ -321,13 +326,16 @@ namespace Company.Function
             return null;
         }
 
+
         public static DateTime convertDateToUTC(string payment_date)
         {
             payment_date = payment_date.Substring(0, payment_date.LastIndexOf(' '));
             payment_date = payment_date.Insert(payment_date.Length - 2, ":");
+
             DateTime convertedDate = DateTime.Parse(payment_date).ToUniversalTime();
             return convertedDate;
 
         }
+
     }
 }
